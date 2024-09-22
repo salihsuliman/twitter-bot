@@ -14,14 +14,6 @@ import { TwitterApi } from "twitter-api-v2";
 import * as e from "express";
 import { onDocumentCreated } from "firebase-functions/firestore";
 
-// Start writing functions
-// https://firebase.google.com/docs/functions/typescript
-
-// export const helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
-
 onDocumentCreated(
   {
     document: "tokens/entries",
@@ -47,14 +39,78 @@ export const auth = onRequest(
       callBackUrl,
       { scope: ["tweet.read", "tweet.write", "users.read", "offline.access"] }
     );
-    await dbRef.set({ codeVerifier, state });
+    await dbRef.set({
+      codeVerifier,
+      state,
+      createdAt: admin.firestore.Timestamp.now(),
+    });
+
     response.redirect(url);
   }
 );
 export const callBack = onRequest(
-  (request: Request, response: e.Response<any>) => {}
+  async (request: Request, response: e.Response<any>) => {
+    const { state, code } = request.query;
+
+    const dbSnapshot = await dbRef.get();
+    const data = dbSnapshot.data();
+
+    if (!data) {
+      response.status(404).send("Data not found");
+      return;
+    }
+
+    const { codeVerifier, state: storedState } = data;
+
+    if (state !== storedState) {
+      response.status(403).send("Invalid state");
+    }
+
+    const {
+      client: loggedClient,
+      accessToken,
+      refreshToken,
+    } = await twitterClient.loginWithOAuth2({
+      code: code as string,
+      codeVerifier,
+      redirectUri: callBackUrl,
+    });
+
+    await dbRef.set({
+      accessToken,
+      refreshToken,
+    });
+
+    const { data: profileData } = await loggedClient.v2.me(); // start using the client if you want
+
+    response.send(profileData);
+  }
 );
 
-export const tweet = onRequest(
-  (request: Request, response: e.Response<any>) => {}
+export const tweetRequest = onRequest(
+  async (request: Request, response: e.Response<any>) => {
+    const databaseData = (await dbRef.get()).data();
+
+    if (!databaseData) {
+      response.status(404).send("Data not found");
+      return;
+    }
+
+    const { refreshToken } = databaseData;
+
+    const {
+      client: refreshedClient,
+      accessToken,
+      refreshToken: newRefreshToken,
+    } = await twitterClient.refreshOAuth2Token(refreshToken);
+
+    await dbRef.set({
+      accessToken,
+      refreshToken: newRefreshToken,
+    });
+
+    const tweet = await refreshedClient.v2.tweet("Hello from Firebase!");
+
+    response.status(200).send(tweet);
+  }
 );
