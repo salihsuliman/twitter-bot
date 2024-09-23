@@ -22,6 +22,19 @@ onDocumentCreated(
   (event) => {}
 );
 
+const tweetArray = [
+  "Elon Musk sold his first video game at age 12 for $500! Proof you're never too young to start! 🎮💰 #Entrepreneur #buildinpublic",
+  "Airbnb began by renting air mattresses to pay rent. Big ideas often start small! 🏠💡 #Airbnb #StartupStory #buildinpublic",
+  "Oprah was fired from her first TV job but built a media empire. Failure is part of the journey! 📺👑 #Oprah #buildinpublic",
+  "Nike’s first shoes were made using a waffle iron! Innovate with what you have! 👟🍴 #Nike #EntrepreneurFacts #buildinpublic",
+  "Netflix started because Reed Hastings hated late fees. Your frustration can spark innovation! 🎥📦 #Netflix #Entrepreneurship #buildinpublic",
+  "Sara Blakely started Spanx with just $5,000. Don't wait for perfect conditions to begin! 💵👗 #Spanx #StartupSuccess #buildinpublic",
+  "Richard Branson launched a student magazine at 16. Start where you are and learn as you go! 📰💡 #Virgin #buildinpublic",
+  "Jack Ma was rejected from 30 jobs, then built Alibaba. Persistence beats rejection! 📉💼 #JackMa #buildinpublic",
+  "Phil Knight sold shoes from his car before Nike became huge. Hustle and believe in your vision! 🚗👟 #EntrepreneurJourney #buildinpublic",
+  "Daymond John sewed hats in his mom’s house before building FUBU. Start small, dream big! 🧢💼 #FUBU #StartupStory #buildinpublic",
+];
+
 admin.initializeApp();
 const dbRef = admin.firestore().doc("tokens/entries");
 
@@ -79,6 +92,7 @@ export const callBack = onRequest(
     await dbRef.set({
       accessToken,
       refreshToken,
+      createdAt: admin.firestore.Timestamp.now(),
     });
 
     const { data: profileData } = await loggedClient.v2.me(); // start using the client if you want
@@ -109,7 +123,9 @@ export const tweetRequest = onRequest(
       refreshToken: newRefreshToken,
     });
 
-    const tweet = await refreshedClient.v2.tweet("Hello from Firebase!");
+    const tweet = await refreshedClient.v2.tweet(
+      tweetArray[Math.floor(Math.random() * 10)]
+    );
 
     response.status(200).send(tweet);
   }
