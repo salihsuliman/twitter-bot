@@ -13,6 +13,7 @@ import admin from "firebase-admin";
 import { TwitterApi } from "twitter-api-v2";
 import * as e from "express";
 import { onDocumentCreated } from "firebase-functions/firestore";
+import OpenAI from "openai";
 
 onDocumentCreated(
   {
@@ -36,7 +37,9 @@ const tweetArray = [
 ];
 
 admin.initializeApp();
+
 const dbRef = admin.firestore().doc("tokens/entries");
+const twitterDb = admin.firestore().collection("tweets");
 
 const twitterClient = new TwitterApi({
   clientId: "UE1TbnRlQmZiQjRIZWhyVFFndDg6MTpjaQ",
@@ -103,30 +106,68 @@ export const callBack = onRequest(
 
 export const tweetRequest = onRequest(
   async (request: Request, response: e.Response<any>) => {
-    const databaseData = (await dbRef.get()).data();
-
-    if (!databaseData) {
-      response.status(404).send("Data not found");
-      return;
-    }
-
-    const { refreshToken } = databaseData;
-
-    const {
-      client: refreshedClient,
-      accessToken,
-      refreshToken: newRefreshToken,
-    } = await twitterClient.refreshOAuth2Token(refreshToken);
-
-    await dbRef.set({
-      accessToken,
-      refreshToken: newRefreshToken,
-    });
-
-    const tweet = await refreshedClient.v2.tweet(
-      tweetArray[Math.floor(Math.random() * 10)]
-    );
-
-    response.status(200).send(tweet);
+    await tweeter(response);
   }
 );
+
+const tweeter = async (response: e.Response<any>) => {
+  const databaseData = (await dbRef.get()).data();
+
+  if (!databaseData) {
+    response.status(404).send("Data not found");
+    return;
+  }
+
+  const { refreshToken } = databaseData;
+
+  const {
+    client: refreshedClient,
+    accessToken,
+    refreshToken: newRefreshToken,
+  } = await twitterClient.refreshOAuth2Token(refreshToken);
+
+  await dbRef.set({
+    accessToken,
+    refreshToken: newRefreshToken,
+  });
+
+  const openai = new OpenAI({
+    apiKey: process.env.SECRET_API_KEY,
+    organization: process.env.ORGANIATION_ID,
+    project: process.env.PROJECT_ID,
+  });
+
+  const chatResponse = await openai.chat.completions.create({
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a personal assistant that provides me with factual tweets on the following topics: \
+          Programming, entrepreneurship, javascript, typescript, machine learning, ai and the latest tech trends. \
+          The number of characters must be less than 140. There can be no emojis. The tweets must be factual and informative.\
+          The tweet must contain the hashtag #buildinpublic",
+      },
+      { role: "user", content: "Say this is a test" },
+    ],
+    model: "gpt-4o-mini",
+  });
+
+  console.log("Response --------------------> ", chatResponse);
+
+  const randomIndex = Math.floor(Math.random() * 10);
+
+  const tweetExists = await twitterDb.doc(tweetArray[randomIndex]).get();
+
+  if (tweetExists.exists) {
+    // re-run the function
+    await tweeter(response);
+  }
+
+  twitterDb.doc(tweetArray[randomIndex]).set({
+    createdAt: admin.firestore.Timestamp.now(),
+  });
+
+  const tweet = await refreshedClient.v2.tweet(tweetArray[randomIndex]);
+
+  response.status(200).send(tweet);
+};
