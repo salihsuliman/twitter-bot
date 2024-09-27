@@ -14,7 +14,7 @@ import { TwitterApi } from "twitter-api-v2";
 import * as e from "express";
 import { onDocumentCreated } from "firebase-functions/firestore";
 import { tweetArray, controversialTweetArray } from "./tweetArrays";
-// import OpenAI from "openai";
+// import OpenAI from "openai";   <-------- USE WHEN YOU PAY FOR CHAT GPT LOOOOL
 
 onDocumentCreated(
   {
@@ -120,6 +120,7 @@ const tweeter = async (response: e.Response<any>) => {
       refreshToken: newRefreshToken,
     });
 
+    // USE WHEN YOU PAY FOR CHAT GPT LOOOOL
     // const openai = new OpenAI({
     //   apiKey: process.env.SECRET_API_KEY,
     //   organization: process.env.ORGANIATION_ID,
@@ -140,8 +141,6 @@ const tweeter = async (response: e.Response<any>) => {
     //   ],
     //   model: "gpt-4o-mini",
     // });
-
-    // console.log("Response --------------------> ", chatResponse);
 
     const totalTweetArrays = [tweetArray, controversialTweetArray];
 
