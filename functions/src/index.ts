@@ -13,7 +13,8 @@ import admin from "firebase-admin";
 import { TwitterApi } from "twitter-api-v2";
 import * as e from "express";
 import { onDocumentCreated } from "firebase-functions/firestore";
-import OpenAI from "openai";
+import { tweetArray, controversialTweetArray } from "./tweetArrays";
+// import OpenAI from "openai";
 
 onDocumentCreated(
   {
@@ -22,19 +23,6 @@ onDocumentCreated(
   },
   (event) => {}
 );
-
-const tweetArray = [
-  "Elon Musk sold his first video game at age 12 for $500! Proof you're never too young to start! 🎮💰 #Entrepreneur #buildinpublic",
-  "Airbnb began by renting air mattresses to pay rent. Big ideas often start small! 🏠💡 #Airbnb #StartupStory #buildinpublic",
-  "Oprah was fired from her first TV job but built a media empire. Failure is part of the journey! 📺👑 #Oprah #buildinpublic",
-  "Nike’s first shoes were made using a waffle iron! Innovate with what you have! 👟🍴 #Nike #EntrepreneurFacts #buildinpublic",
-  "Netflix started because Reed Hastings hated late fees. Your frustration can spark innovation! 🎥📦 #Netflix #Entrepreneurship #buildinpublic",
-  "Sara Blakely started Spanx with just $5,000. Don't wait for perfect conditions to begin! 💵👗 #Spanx #StartupSuccess #buildinpublic",
-  "Richard Branson launched a student magazine at 16. Start where you are and learn as you go! 📰💡 #Virgin #buildinpublic",
-  "Jack Ma was rejected from 30 jobs, then built Alibaba. Persistence beats rejection! 📉💼 #JackMa #buildinpublic",
-  "Phil Knight sold shoes from his car before Nike became huge. Hustle and believe in your vision! 🚗👟 #EntrepreneurJourney #buildinpublic",
-  "Daymond John sewed hats in his mom’s house before building FUBU. Start small, dream big! 🧢💼 #FUBU #StartupStory #buildinpublic",
-];
 
 admin.initializeApp();
 
@@ -111,63 +99,78 @@ export const tweetRequest = onRequest(
 );
 
 const tweeter = async (response: e.Response<any>) => {
-  const databaseData = (await dbRef.get()).data();
+  try {
+    const databaseData = (await dbRef.get()).data();
 
-  if (!databaseData) {
-    response.status(404).send("Data not found");
-    return;
+    if (!databaseData) {
+      response.status(404).send("Data not found");
+      return;
+    }
+
+    const { refreshToken } = databaseData;
+
+    const {
+      client: refreshedClient,
+      accessToken,
+      refreshToken: newRefreshToken,
+    } = await twitterClient.refreshOAuth2Token(refreshToken);
+
+    await dbRef.set({
+      accessToken,
+      refreshToken: newRefreshToken,
+    });
+
+    // const openai = new OpenAI({
+    //   apiKey: process.env.SECRET_API_KEY,
+    //   organization: process.env.ORGANIATION_ID,
+    //   project: process.env.PROJECT_ID,
+    // });
+
+    // const chatResponse = await openai.chat.completions.create({
+    //   messages: [
+    //     {
+    //       role: "system",
+    //       content:
+    //         "You are a personal assistant that provides me with factual tweets on the following topics: \
+    //           Programming, entrepreneurship, javascript, typescript, machine learning, ai and the latest tech trends. \
+    //           The number of characters must be less than 140. There can be no emojis. The tweets must be factual and informative.\
+    //           The tweet needs to have multiple hashtags with one of then being #buildinpublic.",
+    //     },
+    //     { role: "user", content: "Say this is a test" },
+    //   ],
+    //   model: "gpt-4o-mini",
+    // });
+
+    // console.log("Response --------------------> ", chatResponse);
+
+    const totalTweetArrays = [tweetArray, controversialTweetArray];
+
+    const selectedTweetArray =
+      totalTweetArrays[Math.floor(Math.random() * totalTweetArrays.length)];
+
+    const randomIndex = Math.floor(Math.random() * selectedTweetArray.length);
+
+    const tweetExists = await twitterDb
+      .doc(selectedTweetArray[randomIndex])
+      .get();
+
+    if (tweetExists.exists) {
+      // re-run the function
+
+      await tweeter(response);
+    }
+
+    twitterDb.doc(selectedTweetArray[randomIndex]).set({
+      createdAt: admin.firestore.Timestamp.now(),
+    });
+
+    const tweet = await refreshedClient.v2.tweet(
+      selectedTweetArray[randomIndex]
+    );
+
+    response.status(200).send(tweet);
+  } catch (error) {
+    console.error("Error occurred: ", error);
+    response.status(500).send(error);
   }
-
-  const { refreshToken } = databaseData;
-
-  const {
-    client: refreshedClient,
-    accessToken,
-    refreshToken: newRefreshToken,
-  } = await twitterClient.refreshOAuth2Token(refreshToken);
-
-  await dbRef.set({
-    accessToken,
-    refreshToken: newRefreshToken,
-  });
-
-  const openai = new OpenAI({
-    apiKey: process.env.SECRET_API_KEY,
-    organization: process.env.ORGANIATION_ID,
-    project: process.env.PROJECT_ID,
-  });
-
-  const chatResponse = await openai.chat.completions.create({
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a personal assistant that provides me with factual tweets on the following topics: \
-          Programming, entrepreneurship, javascript, typescript, machine learning, ai and the latest tech trends. \
-          The number of characters must be less than 140. There can be no emojis. The tweets must be factual and informative.\
-          The tweet must contain the hashtag #buildinpublic",
-      },
-      { role: "user", content: "Say this is a test" },
-    ],
-    model: "gpt-4o-mini",
-  });
-
-  console.log("Response --------------------> ", chatResponse);
-
-  const randomIndex = Math.floor(Math.random() * 10);
-
-  const tweetExists = await twitterDb.doc(tweetArray[randomIndex]).get();
-
-  if (tweetExists.exists) {
-    // re-run the function
-    await tweeter(response);
-  }
-
-  twitterDb.doc(tweetArray[randomIndex]).set({
-    createdAt: admin.firestore.Timestamp.now(),
-  });
-
-  const tweet = await refreshedClient.v2.tweet(tweetArray[randomIndex]);
-
-  response.status(200).send(tweet);
 };
